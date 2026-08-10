@@ -1,4 +1,12 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // prisma.config.ts is CLI-only. Compiling it would pull the project root into
+  // rootDir and emit to dist/src/main.js instead of dist/main.js.
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "prisma.config.ts",
+    "**/*spec.ts"
+  ]
 }
