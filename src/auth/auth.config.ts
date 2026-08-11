@@ -7,6 +7,7 @@ import {
   SESSION_COOKIE_CACHE_SECONDS,
   SESSION_EXPIRES_IN_SECONDS,
   SESSION_UPDATE_AGE_SECONDS,
+  SIGNUP_FREE_CREDITS,
 } from './auth.constants.js';
 
 export interface AuthEnv {
@@ -49,9 +50,29 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       },
     },
 
-    // The free-credit grant on sign-up belongs here, as a
-    // `databaseHooks.user.create.after` hook using SIGNUP_FREE_CREDITS — added
-    // once the credits model exists in schema.prisma.
+    databaseHooks: {
+      user: {
+        create: {
+          // Runs inside sign-up, after the user row is committed. The balance
+          // row and its ledger entry go in one transaction so a new user can
+          // never end up with a balance that the ledger can't account for.
+          after: async (user) => {
+            await prisma.$transaction([
+              prisma.creditBalance.create({
+                data: { userId: user.id, balance: SIGNUP_FREE_CREDITS },
+              }),
+              prisma.creditTransaction.create({
+                data: {
+                  userId: user.id,
+                  amount: SIGNUP_FREE_CREDITS,
+                  reason: 'SIGNUP_BONUS',
+                },
+              }),
+            ]);
+          },
+        },
+      },
+    },
   });
 }
 

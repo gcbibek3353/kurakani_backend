@@ -22,22 +22,6 @@ services:
     volumes:
       - minio_data:/data
 
-  mem0:
-    image: mem0/mem0-api-server
-    platform : linux/arm64
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: kurakani
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_COLLECTION_NAME: memories
-    ports:
-      - "8888:8000"
-    depends_on:
-      - postgres
-
 volumes:
   postgres_data:
   minio_data:
