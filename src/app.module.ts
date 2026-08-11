@@ -6,6 +6,7 @@ import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { UserController } from './user/user.controller.js';
+import { ChatModule } from './chat/chat.module.js';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { UserController } from './user/user.controller.js';
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     PrismaModule,
     AuthModule,
+    ChatModule,
   ],
   controllers: [AppController, UserController],
   providers: [AppService],
