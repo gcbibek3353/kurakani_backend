@@ -8,15 +8,35 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiCookieAuth,
+  ApiExtraModels,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import type { Request, Response } from 'express';
+import {
+  ErrorResponseDto,
+  InsufficientCreditsDto,
+} from '../common/dto/error.dto.js';
 import { CreditsService } from '../credits/credits.service.js';
 
 import { MessageRole } from '../generated/prisma/enums.js';
-import { isValidChatDto } from './chat.dto.js';
+import { ChatDto, isValidChatDto } from './chat.dto.js';
+import { CHAT_STREAM_EVENTS } from './dto/chat-stream.dto.js';
 import { ChatService } from './chat.service.js';
 
+@ApiTags('chat')
+@ApiCookieAuth()
 @Controller('api')
 export class ChatController {
   constructor(
@@ -25,6 +45,43 @@ export class ChatController {
   ) {}
 
   @Post('chat')
+  @ApiOperation({
+    summary: 'Send a message and stream the reply',
+    description: [
+      'Server-sent events. Each frame is `data: <json>\\n\\n`; parse the JSON and',
+      'narrow on `type`. `credits` and `conversation` always arrive first, then a',
+      'run of `token` deltas, then `done`.',
+      '',
+      'Failures that can still carry a real status code (auth, ownership, credits)',
+      'are settled before the headers flush — so a 402 arrives as JSON, never as a',
+      'frame inside a 200 stream.',
+    ].join(' '),
+  })
+  @ApiBody({ type: ChatDto })
+  @ApiExtraModels(...CHAT_STREAM_EVENTS)
+  @ApiOkResponse({
+    description: 'An SSE stream. The schema describes one decoded frame.',
+    content: {
+      'text/event-stream': {
+        schema: {
+          oneOf: CHAT_STREAM_EVENTS.map((event) => ({
+            $ref: getSchemaPath(event),
+          })),
+        },
+      },
+    },
+  })
+  @ApiBadRequestResponse({ type: ErrorResponseDto })
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto })
+  @ApiForbiddenResponse({
+    description: 'conversationId is unknown or belongs to another user.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 402,
+    description: 'Out of credits — the frontend shows the top-up prompt.',
+    type: InsufficientCreditsDto,
+  })
   async stream(
     @Session() session: UserSession,
     @Body() body: unknown,
@@ -83,7 +140,11 @@ export class ChatController {
     // chat this is how the browser learns the id to send with turn 2.
     send({
       type: 'conversation',
-      value: { id: conversation.id, title: conversation.title },
+      value: {
+        id: conversation.id,
+        title: conversation.title,
+        mode: conversation.mode,
+      },
     });
 
     let clientGone = false;

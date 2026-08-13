@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module.js';
+import { setupSwagger, SWAGGER_UI_PATH } from './swagger.js';
 
 async function bootstrap() {
   // `bodyParser: false` is required by @thallesp/nestjs-better-auth: Better Auth
@@ -21,6 +22,11 @@ async function bootstrap() {
     credentials: true,
   });
 
-  await app.listen(config.get<number>('PORT') ?? 3001);
+  setupSwagger(app);
+
+  const port = config.get<number>('PORT') ?? 3001;
+  await app.listen(port);
+
+  console.log(`API docs: http://localhost:${port}/${SWAGGER_UI_PATH}`);
 }
 void bootstrap();

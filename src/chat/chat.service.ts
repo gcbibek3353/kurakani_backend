@@ -41,7 +41,7 @@ export class ChatService {
     // Built ONCE, in the constructor. ChatGroq holds an HTTP client with a
     // connection pool; constructing one per request would open a new pool per
     // message and leak sockets under load.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
     this.model = new ChatGroq({
       apiKey: config.getOrThrow<string>('GROQ_API_KEY'),
       model: config.getOrThrow<string>('GROQ_CHAT_MODEL'),
