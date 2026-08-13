@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { UserController } from './user/user.controller.js';
 import { ChatModule } from './chat/chat.module.js';
+import { ConversationsModule } from './conversations/conversations.module.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ChatModule } from './chat/chat.module.js';
     PrismaModule,
     AuthModule,
     ChatModule,
+    ConversationsModule,
   ],
   controllers: [AppController, UserController],
   providers: [AppService],

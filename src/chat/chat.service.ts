@@ -59,29 +59,44 @@ export class ChatService {
   // ─────────────────────────────────────────────────────────────────────
 
   /**
-   * Returns the conversation to write into, creating one if the client didn't
-   * name one.
+   * Loads a conversation the user owns, or throws.
    *
-   * The `userId` in the WHERE clause is the entire authorization model for
-   * chat. Looking up by id alone and checking ownership afterwards works too,
-   * but this way there is no code path where a wrong id reaches a query
-   * unscoped — the row simply isn't found.
+   * Split out from creation (which used to live here) because credits are now
+   * charged between the two: verify the id → debit → only then create a row.
+   * Creating first meant every rejected 402 left an orphan conversation.
    */
-  async resolveConversation(userId: string, conversationId?: string) {
-    if (conversationId) {
-      const existing = await this.prisma.conversation.findFirst({
-        where: { id: conversationId, userId },
-      });
+  async findConversation(userId: string, conversationId: string) {
+    const existing = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, userId },
+    });
 
-      // Deliberately not NotFound: "this id does not exist" and "this id is
-      // someone else's" must be indistinguishable, or the error becomes an
-      // oracle for probing which conversation ids are real.
-      if (!existing) throw new ForbiddenException('Conversation not found');
-      return existing;
-    }
+    // Deliberately not NotFound: "does not exist" and "belongs to someone
+    // else" must be indistinguishable, or the error is an oracle for probing
+    // which conversation ids are real.
+    if (!existing) throw new ForbiddenException('Conversation not found');
+    return existing;
+  }
 
+  /**
+   * The title is set at creation from the first message rather than patched in
+   * afterwards, so the `conversation` SSE event can carry a real title and the
+   * sidebar never has to render a placeholder it will replace a second later.
+   */
+  async createConversation(userId: string, firstMessage: string) {
     return this.prisma.conversation.create({
-      data: { userId },
+      data: { userId, title: firstMessage.slice(0, 60) },
+    });
+  }
+
+  /**
+   * Bumps `updatedAt` so the sidebar can order by "most recent".
+   * Needed explicitly: `@updatedAt` only fires when THIS row is updated, and
+   * inserting a child Message does not touch its parent.
+   */
+  async bumpConversation(conversationId: string) {
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
     });
   }
 
@@ -92,30 +107,6 @@ export class ChatService {
   ) {
     return this.prisma.message.create({
       data: { conversationId, role, content },
-    });
-  }
-
-  /**
-   * Bumps `updatedAt` so the Phase 3f sidebar can order by "most recent".
-   *
-   * Needed explicitly because `@updatedAt` only fires when THIS row is
-   * updated — inserting a child Message row does not touch its parent.
-   * Also carries the auto-title: the first user message, truncated. An
-   * LLM-written title is a Phase 8 nicety, not worth a second Groq call now.
-   */
-  async touchConversation(
-    conversationId: string,
-    currentTitle: string,
-    firstMessage: string,
-  ) {
-    const isUntitled = currentTitle === 'New chat';
-
-    await this.prisma.conversation.update({
-      where: { id: conversationId },
-      data: {
-        updatedAt: new Date(),
-        ...(isUntitled ? { title: firstMessage.slice(0, 60) } : {}),
-      },
     });
   }
 
