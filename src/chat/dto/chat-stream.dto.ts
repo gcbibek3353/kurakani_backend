@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-
+import { SourceChunkDto } from '../../rag/dto/rag.dto.js';
 import { ChatMode } from '../../generated/prisma/enums.js';
 
 /**
@@ -33,6 +33,18 @@ export class ChatConversationEventDto {
 
   @ApiProperty({ type: ConversationRefDto })
   value: ConversationRefDto;
+}
+
+export class ChatSourcesEventDto {
+  @ApiProperty({ enum: ['sources'] })
+  type: 'sources';
+
+  @ApiProperty({
+    type: [SourceChunkDto],
+    description:
+      'Chunks the answer was grounded in. Sent once, before any token.',
+  })
+  value: SourceChunkDto[];
 }
 
 export class ChatCreditsEventDto {
@@ -69,6 +81,7 @@ export class ChatErrorEventDto {
 export const CHAT_STREAM_EVENTS = [
   ChatConversationEventDto,
   ChatCreditsEventDto,
+  ChatSourcesEventDto,
   ChatTokenEventDto,
   ChatDoneEventDto,
   ChatErrorEventDto,

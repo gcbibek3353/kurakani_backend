@@ -31,7 +31,10 @@ import {
 } from '../common/dto/error.dto.js';
 import { CreditsService } from '../credits/credits.service.js';
 
-import { MessageRole } from '../generated/prisma/enums.js';
+import { ChatMode, MessageRole } from '../generated/prisma/enums.js';
+import { VectorStoreService } from '../rag/vector-store.service.js';
+import type { RetrievedChunk } from '../rag/vector-store.service.js';
+
 import { ChatDto, isValidChatDto } from './chat.dto.js';
 import { CHAT_STREAM_EVENTS } from './dto/chat-stream.dto.js';
 import { ChatService } from './chat.service.js';
@@ -44,6 +47,7 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly credits: CreditsService,
     private readonly memory: MemoryService,
+    private readonly vectors: VectorStoreService,
   ) {}
 
   @Post('chat')
@@ -162,34 +166,42 @@ export class ChatController {
     let assistantReply = '';
 
     try {
-      // Saved BEFORE the model is called. If Groq is down, the user's message
-      // is still in the transcript — losing the user's own words to a provider
-      // outage is the worst possible failure here.
-      await this.chatService.saveMessage(
-        conversation.id,
-        MessageRole.USER,
-        userMessage,
-      );
-
-      // Both are independent and both sit between "enter pressed" and "first
-      // token", so run them together — sequential awaits would add the vector
-      // search to the insert instead of overlapping them.
-      //
-      // recall() is documented never to throw, which is what makes it safe
-      // inside Promise.all: one rejection here would abort the other branch.
-      const [, facts] = await Promise.all([
+      // The save runs BEFORE the model is called. If Groq is down, the user's
+      // message is still in the transcript — losing the user's own words to a
+      // provider outage is the worst possible failure here.
+      const [, facts, context] = await Promise.all([
         this.chatService.saveMessage(
           conversation.id,
           MessageRole.USER,
           userMessage,
         ),
         this.memory.recall(userId, userMessage),
+        // Retrieval only in RAG mode. A NORMAL conversation must not pay an
+        // embedding round trip on every turn for chunks that don't exist.
+        conversation.mode === ChatMode.RAG
+          ? this.retrieveSafely(conversation.id, userId, userMessage)
+          : Promise.resolve<RetrievedChunk[]>([]),
       ]);
 
-      const messages = await this.chatService.loadHistory(
-        conversation.id,
+      if (context.length > 0) {
+        // Before the first token, so the UI can render citations while the
+        // answer is still streaming in.
+        send({
+          type: 'sources',
+          value: context.map((chunk) => ({
+            documentId: chunk.documentId,
+            title: chunk.title,
+            page: chunk.page,
+            score: chunk.score,
+            excerpt: chunk.content.slice(0, 300),
+          })),
+        });
+      }
+
+      const messages = await this.chatService.loadHistory(conversation.id, {
         facts,
-      );
+        context,
+      });
 
       for await (const token of this.chatService.streamReply(messages)) {
         if (clientGone) break;
@@ -234,6 +246,23 @@ export class ChatController {
       await this.chatService.bumpConversation(conversation.id);
 
       if (!clientGone) res.end();
+    }
+  }
+
+  /**
+   * Retrieval must degrade, not 500. A Gemini hiccup should cost the user
+   * grounding on one message, not the whole reply — and it sits inside a
+   * Promise.all, where one rejection would abort the other branches.
+   */
+  private async retrieveSafely(
+    conversationId: string,
+    userId: string,
+    query: string,
+  ): Promise<RetrievedChunk[]> {
+    try {
+      return await this.vectors.retrieve(conversationId, userId, query);
+    } catch {
+      return [];
     }
   }
 }

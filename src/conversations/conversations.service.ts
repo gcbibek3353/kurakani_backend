@@ -1,10 +1,17 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { VectorStoreService } from '../rag/vector-store.service.js';
+import { StorageService } from '../storage/storage.service.js';
+import { ChatMode } from '../generated/prisma/enums.js';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly vectors: VectorStoreService,
+    private readonly storage: StorageService,
+  ) {}
 
   /**
    * Sidebar list. `select` is not laziness — the sidebar never shows message
@@ -46,6 +53,28 @@ export class ConversationsService {
   }
 
   /**
+   * Flip the RAG tab on or off.
+   *
+   * Same rowcount-as-authorization pattern as remove(): updateMany scoped by
+   * userId does the ownership check in the WHERE clause, then a re-read returns
+   * the summary shape the sidebar already knows how to render. Ingestion also
+   * flips this to RAG on its own (see IngestionService.process) — this endpoint
+   * is what lets the user switch back.
+   */
+  async setMode(userId: string, id: string, mode: ChatMode) {
+    const { count } = await this.prisma.conversation.updateMany({
+      where: { id, userId },
+      data: { mode },
+    });
+    if (count === 0) throw new ForbiddenException('Conversation not found');
+
+    return this.prisma.conversation.findFirstOrThrow({
+      where: { id, userId },
+      select: { id: true, title: true, mode: true, updatedAt: true },
+    });
+  }
+
+  /**
    * deleteMany, not delete, so ownership is enforced by the same WHERE clause
    * that does the work — `delete` needs a unique field and would let a wrong
    * userId through unless you remembered a separate check.
@@ -55,11 +84,23 @@ export class ConversationsService {
    * document_chunks — Postgres cascades won't reach them, LangChain owns
    * that table and Prisma doesn't know it exists.
    */
-  async remove(userId: string, id: string) {
+  async remove(userId: string, id: string): Promise<void> {
+    // Read the objectKeys before the cascade destroys the rows that name them.
+    const documents = await this.prisma.document.findMany({
+      where: { conversationId: id, userId },
+      select: { objectKey: true },
+    });
+
     const { count } = await this.prisma.conversation.deleteMany({
       where: { id, userId },
     });
-
     if (count === 0) throw new ForbiddenException('Conversation not found');
+
+    // Messages and Documents went with the cascade. These two did not:
+    // document_chunks is LangChain's table, and MinIO isn't Postgres at all.
+    await this.vectors.deleteByConversation(id);
+    for (const doc of documents) {
+      if (doc.objectKey) await this.storage.remove(doc.objectKey);
+    }
   }
 }

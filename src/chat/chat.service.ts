@@ -10,6 +10,7 @@ import { ChatGroq } from '@langchain/groq';
 
 import { MessageRole } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { RetrievedChunk } from '../rag/vector-store.service.js';
 
 /**
  * How many past messages of THIS conversation get replayed to the model.
@@ -128,7 +129,7 @@ export class ChatService {
    */
   async loadHistory(
     conversationId: string,
-    facts: string[] = [],
+    prompt: { facts?: string[]; context?: RetrievedChunk[] } = {},
   ): Promise<BaseMessage[]> {
     const rows = await this.prisma.message.findMany({
       where: { conversationId },
@@ -151,7 +152,12 @@ export class ChatService {
     // The system prompt is prepended fresh every time rather than stored as a
     // row, so changing it takes effect on old conversations too. Phase 4 will
     // append the user's mem0 facts to this same string.
-    return [new SystemMessage(this.buildSystemPrompt(facts)), ...history];
+    return [
+      new SystemMessage(
+        this.buildSystemPrompt(prompt.facts ?? [], prompt.context ?? []),
+      ),
+      ...history,
+    ];
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -194,18 +200,42 @@ export class ChatService {
    * replies with "I remember you're vegetarian!", which reads as creepy rather
    * than helpful.
    */
-  private buildSystemPrompt(facts: string[]): string {
-    if (facts.length === 0) return SYSTEM_PROMPT;
+  private buildSystemPrompt(
+    facts: string[],
+    context: RetrievedChunk[],
+  ): string {
+    const parts = [SYSTEM_PROMPT];
 
-    return [
-      SYSTEM_PROMPT,
-      '',
-      'Things you already know about this user, from earlier conversations:',
-      ...facts.map((fact) => `- ${fact}`),
-      '',
-      'Use these only when they are relevant to the question. Do not mention',
-      'that you have stored notes, and do not repeat a fact back unless it',
-      'helps answer what was asked.',
-    ].join('\n');
+    if (facts.length > 0) {
+      parts.push(
+        '',
+        'Things you already know about this user, from earlier conversations:',
+        ...facts.map((fact) => `- ${fact}`),
+        '',
+        'Use these only when they are relevant. Do not mention that you have',
+        'stored notes, and do not repeat a fact back unless it helps.',
+      );
+    }
+
+    if (context.length > 0) {
+      parts.push(
+        '',
+        'The user has attached documents. Answer using ONLY the excerpts below.',
+        'If the excerpts do not contain the answer, say so plainly rather than',
+        'filling the gap from general knowledge — a confident wrong answer is',
+        'worse here than an admitted gap. Cite the source title, and the page',
+        'when one is given.',
+        '',
+        ...context.map((chunk, i) => {
+          const where =
+            chunk.page !== undefined
+              ? `${chunk.title}, page ${chunk.page}`
+              : chunk.title;
+          return `[${i + 1}] (${where})\n${chunk.content}`;
+        }),
+      );
+    }
+
+    return parts.join('\n');
   }
 }

@@ -9,6 +9,8 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { UserController } from './user/user.controller.js';
 import { ChatModule } from './chat/chat.module.js';
 import { ConversationsModule } from './conversations/conversations.module.js';
+import { StorageModule } from './storage/storage.module.js';
+import { RagModule } from './rag/rag.module.js';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { ConversationsModule } from './conversations/conversations.module.js';
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     PrismaModule,
     AuthModule,
+    StorageModule,
+    RagModule,
     MemoryModule,
     ChatModule,
     ConversationsModule,

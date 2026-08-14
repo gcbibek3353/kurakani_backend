@@ -61,6 +61,162 @@
         ]
       }
     },
+    "/api/rag/upload": {
+      "post": {
+        "description": "Returns immediately with status PENDING. Poll GET /api/rag/documents until READY or FAILED — embedding a long PDF takes tens of seconds.",
+        "operationId": "RagController_upload",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "conversationId"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "conversationId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Upload a PDF for retrieval",
+        "tags": [
+          "rag"
+        ]
+      }
+    },
+    "/api/rag/url": {
+      "post": {
+        "operationId": "RagController_url",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestUrlDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Ingest a YouTube or web URL",
+        "tags": [
+          "rag"
+        ]
+      }
+    },
+    "/api/rag/documents": {
+      "get": {
+        "operationId": "RagController_list",
+        "parameters": [
+          {
+            "name": "conversationId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Ingestion status for one conversation",
+        "tags": [
+          "rag"
+        ]
+      }
+    },
+    "/api/rag/documents/{id}": {
+      "delete": {
+        "operationId": "RagController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Remove a document, its vectors and its stored file",
+        "tags": [
+          "rag"
+        ]
+      }
+    },
     "/api/memory": {
       "get": {
         "description": "Long-term facts extracted from past conversations, stored in pgvector. Separate from conversation history, which lives in the Message table.",
@@ -158,6 +314,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/ChatCreditsEventDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChatSourcesEventDto"
                     },
                     {
                       "$ref": "#/components/schemas/ChatTokenEventDto"
@@ -369,6 +528,51 @@
           "conversations"
         ]
       }
+    },
+    "/api/conversations/{id}/mode": {
+      "patch": {
+        "operationId": "ConversationsController_setMode",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSummaryDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "tags": [
+          "conversations"
+        ]
+      }
     }
   },
   "info": {
@@ -446,6 +650,94 @@
         "required": [
           "statusCode",
           "message"
+        ]
+      },
+      "SourceType": {
+        "type": "string",
+        "enum": [
+          "PDF",
+          "YOUTUBE",
+          "WEB"
+        ]
+      },
+      "IngestStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "PROCESSING",
+          "READY",
+          "FAILED"
+        ]
+      },
+      "DocumentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": "string"
+          },
+          "sourceType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SourceType"
+              }
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IngestStatus"
+              }
+            ]
+          },
+          "filename": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true,
+            "description": "Populated when status is FAILED — show it to the user verbatim."
+          },
+          "chunkCount": {
+            "type": "number",
+            "description": "Chunks embedded. Zero while pending."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "conversationId",
+          "sourceType",
+          "status",
+          "chunkCount",
+          "createdAt"
+        ]
+      },
+      "IngestUrlDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "A YouTube link or any web page. The backend classifies it.",
+            "example": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+          },
+          "conversationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "conversationId"
         ]
       },
       "MemoryItemDto": {
@@ -534,6 +826,56 @@
           "value": {
             "type": "number",
             "description": "Balance remaining after this turn was charged."
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ]
+      },
+      "SourceChunkDto": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "page": {
+            "type": "number"
+          },
+          "score": {
+            "type": "number",
+            "description": "Cosine distance — lower is closer."
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "The chunk text, truncated for display."
+          }
+        },
+        "required": [
+          "documentId",
+          "title",
+          "score",
+          "excerpt"
+        ]
+      },
+      "ChatSourcesEventDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "sources"
+            ]
+          },
+          "value": {
+            "description": "Chunks the answer was grounded in. Sent once, before any token.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceChunkDto"
+            }
           }
         },
         "required": [

@@ -1,10 +1,13 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
 } from '@nestjs/common';
 import {
   ApiCookieAuth,
@@ -25,6 +28,7 @@ import {
   ConversationDetailDto,
   ConversationSummaryDto,
 } from './dto/conversation.dto.js';
+import { ChatMode } from '../generated/prisma/enums.js';
 
 /**
  * No POST here on purpose. A conversation is created lazily by the first
@@ -70,5 +74,18 @@ export class ConversationsController {
   })
   async remove(@Session() session: UserSession, @Param('id') id: string) {
     await this.conversations.remove(session.user.id, id);
+  }
+
+  @Patch(':id/mode')
+  @ApiOkResponse({ type: ConversationSummaryDto })
+  setMode(
+    @Session() session: UserSession,
+    @Param('id') id: string,
+    @Body('mode') mode: ChatMode,
+  ) {
+    if (mode !== ChatMode.NORMAL && mode !== ChatMode.RAG) {
+      throw new BadRequestException('mode must be NORMAL or RAG');
+    }
+    return this.conversations.setMode(session.user.id, id, mode);
   }
 }
