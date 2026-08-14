@@ -61,6 +61,76 @@
         ]
       }
     },
+    "/api/memory": {
+      "get": {
+        "description": "Long-term facts extracted from past conversations, stored in pgvector. Separate from conversation history, which lives in the Message table.",
+        "operationId": "MemoryController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryItemDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "List everything the assistant remembers about you",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memory/{id}": {
+      "delete": {
+        "operationId": "MemoryController_forget",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "Unknown id, or a memory belonging to another user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Forget one fact",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/chat": {
       "post": {
         "description": "Server-sent events. Each frame is `data: <json>\\n\\n`; parse the JSON and narrow on `type`. `credits` and `conversation` always arrive first, then a run of `token` deltas, then `done`.  Failures that can still carry a real status code (auth, ownership, credits) are settled before the headers flush — so a 402 arrives as JSON, never as a frame inside a 200 stream.",
@@ -376,6 +446,31 @@
         "required": [
           "statusCode",
           "message"
+        ]
+      },
+      "MemoryItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "mem0 id — pass to DELETE /api/memory/:id."
+          },
+          "memory": {
+            "type": "string",
+            "description": "The extracted fact, e.g. \"Is vegetarian\".",
+            "example": "Prefers TypeScript over JavaScript"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "ISO timestamp, if mem0 recorded one."
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "memory"
         ]
       },
       "ChatMode": {

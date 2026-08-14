@@ -21,6 +21,7 @@ import {
   ApiUnauthorizedResponse,
   getSchemaPath,
 } from '@nestjs/swagger';
+import { MemoryService } from '../memory/memory.service.js';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import type { Request, Response } from 'express';
@@ -42,6 +43,7 @@ export class ChatController {
   constructor(
     private readonly chatService: ChatService,
     private readonly credits: CreditsService,
+    private readonly memory: MemoryService,
   ) {}
 
   @Post('chat')
@@ -169,7 +171,25 @@ export class ChatController {
         userMessage,
       );
 
-      const messages = await this.chatService.loadHistory(conversation.id);
+      // Both are independent and both sit between "enter pressed" and "first
+      // token", so run them together — sequential awaits would add the vector
+      // search to the insert instead of overlapping them.
+      //
+      // recall() is documented never to throw, which is what makes it safe
+      // inside Promise.all: one rejection here would abort the other branch.
+      const [, facts] = await Promise.all([
+        this.chatService.saveMessage(
+          conversation.id,
+          MessageRole.USER,
+          userMessage,
+        ),
+        this.memory.recall(userId, userMessage),
+      ]);
+
+      const messages = await this.chatService.loadHistory(
+        conversation.id,
+        facts,
+      );
 
       for await (const token of this.chatService.streamReply(messages)) {
         if (clientGone) break;
@@ -205,6 +225,11 @@ export class ChatController {
           assistantReply,
         );
       }
+
+      // Fire-and-forget: returns void, does not delay res.end(). Runs even
+      // for a partial reply from an aborted stream — half an exchange still
+      // contains facts worth keeping.
+      this.memory.remember(userId, userMessage, assistantReply);
 
       await this.chatService.bumpConversation(conversation.id);
 

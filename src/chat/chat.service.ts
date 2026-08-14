@@ -126,7 +126,10 @@ export class ChatService {
    * simply the last element and there is no "history plus the new one"
    * special case anywhere.
    */
-  async loadHistory(conversationId: string): Promise<BaseMessage[]> {
+  async loadHistory(
+    conversationId: string,
+    facts: string[] = [],
+  ): Promise<BaseMessage[]> {
     const rows = await this.prisma.message.findMany({
       where: { conversationId },
       orderBy: { createdAt: 'desc' },
@@ -148,7 +151,7 @@ export class ChatService {
     // The system prompt is prepended fresh every time rather than stored as a
     // row, so changing it takes effect on old conversations too. Phase 4 will
     // append the user's mem0 facts to this same string.
-    return [new SystemMessage(SYSTEM_PROMPT), ...history];
+    return [new SystemMessage(this.buildSystemPrompt(facts)), ...history];
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -177,5 +180,32 @@ export class ChatService {
 
   logStreamFailure(error: unknown) {
     this.logger.error(error instanceof Error ? error.message : String(error));
+  }
+
+  /**
+   * Long-term facts go in the SYSTEM message, not as a fake user turn.
+   *
+   * Two reasons. The model weights system content differently from dialogue,
+   * and — more practically — anything you put in the transcript gets saved to
+   * the Message table and replayed by loadHistory forever. Facts belong in the
+   * prompt scaffolding, which is rebuilt fresh on every request.
+   *
+   * The "don't announce it" instruction matters: without it the model opens
+   * replies with "I remember you're vegetarian!", which reads as creepy rather
+   * than helpful.
+   */
+  private buildSystemPrompt(facts: string[]): string {
+    if (facts.length === 0) return SYSTEM_PROMPT;
+
+    return [
+      SYSTEM_PROMPT,
+      '',
+      'Things you already know about this user, from earlier conversations:',
+      ...facts.map((fact) => `- ${fact}`),
+      '',
+      'Use these only when they are relevant to the question. Do not mention',
+      'that you have stored notes, and do not repeat a fact back unless it',
+      'helps answer what was asked.',
+    ].join('\n');
   }
 }

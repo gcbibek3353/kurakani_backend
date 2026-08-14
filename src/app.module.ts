@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { MemoryModule } from './memory/memory.module.js';
 
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -15,6 +16,7 @@ import { ConversationsModule } from './conversations/conversations.module.js';
     ConfigModule.forRoot({ isGlobal: true, cache: true }),
     PrismaModule,
     AuthModule,
+    MemoryModule,
     ChatModule,
     ConversationsModule,
   ],
