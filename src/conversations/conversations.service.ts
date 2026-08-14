@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../prisma/prisma.service.js';
 import { VectorStoreService } from '../rag/vector-store.service.js';
@@ -41,6 +46,11 @@ export class ConversationsService {
         id: true,
         title: true,
         mode: true,
+        // Owner-only, and safe here precisely because this query is scoped by
+        // userId. It lets the chat page render the share button in the right
+        // state without a second request.
+        shareToken: true,
+        sharedAt: true,
         messages: {
           orderBy: { createdAt: 'asc' },
           select: { id: true, role: true, content: true, createdAt: true },
@@ -50,6 +60,98 @@ export class ConversationsService {
 
     if (!conversation) throw new ForbiddenException('Conversation not found');
     return conversation;
+  }
+
+  /**
+   * Create or refresh a share link. Returns the token.
+   *
+   * Idempotent in the token, not in the snapshot: sharing again keeps the same
+   * URL — so links already sent to people keep working — but moves `sharedAt`
+   * to now, which is what extends the snapshot to cover everything said since.
+   * That matches what a "Share" button means to a user: publish the
+   * conversation as it stands at the moment they click.
+   */
+  async share(
+    userId: string,
+    id: string,
+  ): Promise<{ token: string; sharedAt: Date }> {
+    const existing = await this.prisma.conversation.findFirst({
+      where: { id, userId },
+      select: { shareToken: true },
+    });
+    if (!existing) throw new ForbiddenException('Conversation not found');
+
+    const token = existing.shareToken ?? randomUUID();
+    const sharedAt = new Date();
+
+    // updateMany scoped by userId even though ownership was just checked —
+    // the same rowcount-as-authorization habit as remove() and setMode(). The
+    // check and the write should never be able to drift apart.
+    await this.prisma.conversation.updateMany({
+      where: { id, userId },
+      data: { shareToken: token, sharedAt },
+    });
+
+    return { token, sharedAt };
+  }
+
+  /**
+   * Revoke. Clearing the token is what actually kills the link: findUnique on
+   * a null column matches nothing, so the old URL 404s immediately.
+   */
+  async unshare(userId: string, id: string): Promise<void> {
+    const { count } = await this.prisma.conversation.updateMany({
+      where: { id, userId },
+      data: { shareToken: null, sharedAt: null },
+    });
+    if (count === 0) throw new ForbiddenException('Conversation not found');
+  }
+
+  /**
+   * The one public read in the app. No userId anywhere — the token is the
+   * entire credential, which is why it comes from randomUUID() rather than
+   * anything derived from the conversation.
+   *
+   * 404 rather than the 403 used everywhere else, and that inversion is
+   * deliberate: elsewhere a uniform 403 stops id enumeration, but an
+   * unguessable token leaks nothing by admitting it doesn't exist — so the
+   * visitor gets a truthful answer instead of a misleading one.
+   *
+   * Two queries rather than one nested include, because the message cutoff
+   * depends on `sharedAt`, which isn't known until the first query returns.
+   * Splitting it puts the cutoff in a SQL WHERE clause instead of a JS filter,
+   * so messages sent after the snapshot are never loaded into the process.
+   */
+  async findByShareToken(token: string) {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { shareToken: token },
+      select: { id: true, title: true, sharedAt: true },
+    });
+
+    // The sharedAt check is not redundant with the token check. A row could
+    // only carry a token with a null timestamp through a bug — but if that
+    // ever happened, the cutoff below would silently become "no cutoff" and
+    // publish the entire conversation, including messages sent later.
+    if (!conversation?.sharedAt) {
+      throw new NotFoundException('This share link is no longer valid');
+    }
+
+    const messages = await this.prisma.message.findMany({
+      where: {
+        conversationId: conversation.id,
+        createdAt: { lte: conversation.sharedAt },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, role: true, content: true, createdAt: true },
+    });
+
+    // Note what is absent: no conversation id, no userId, no mode, no attached
+    // documents. Returning the row as-is would publish all of them.
+    return {
+      title: conversation.title,
+      sharedAt: conversation.sharedAt,
+      messages,
+    };
   }
 
   /**

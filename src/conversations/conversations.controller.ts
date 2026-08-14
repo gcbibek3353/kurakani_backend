@@ -8,6 +8,7 @@ import {
   HttpStatus,
   Param,
   Patch,
+  Post,
 } from '@nestjs/common';
 import {
   ApiCookieAuth,
@@ -27,6 +28,7 @@ import { ConversationsService } from './conversations.service.js';
 import {
   ConversationDetailDto,
   ConversationSummaryDto,
+  ShareLinkDto,
 } from './dto/conversation.dto.js';
 import { ChatMode } from '../generated/prisma/enums.js';
 
@@ -74,6 +76,36 @@ export class ConversationsController {
   })
   async remove(@Session() session: UserSession, @Param('id') id: string) {
     await this.conversations.remove(session.user.id, id);
+  }
+
+  @Post(':id/share')
+  @ApiOperation({
+    summary: 'Create or refresh the public read-only link',
+    description:
+      'Calling this again keeps the same token but moves the snapshot cutoff ' +
+      'to now, publishing anything said since the link was first created.',
+  })
+  @ApiParam({ name: 'id', description: 'Conversation id (cuid)' })
+  @ApiOkResponse({ type: ShareLinkDto })
+  @ApiForbiddenResponse({
+    description: 'Unknown id, or owned by another user.',
+    type: ErrorResponseDto,
+  })
+  async share(@Session() session: UserSession, @Param('id') id: string) {
+    return this.conversations.share(session.user.id, id);
+  }
+
+  @Delete(':id/share')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Revoke the public link' })
+  @ApiParam({ name: 'id', description: 'Conversation id (cuid)' })
+  @ApiNoContentResponse({ description: 'Revoked; the old URL now 404s.' })
+  @ApiForbiddenResponse({
+    description: 'Unknown id, or owned by another user.',
+    type: ErrorResponseDto,
+  })
+  async unshare(@Session() session: UserSession, @Param('id') id: string) {
+    await this.conversations.unshare(session.user.id, id);
   }
 
   @Patch(':id/mode')

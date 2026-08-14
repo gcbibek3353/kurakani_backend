@@ -529,6 +529,112 @@
         ]
       }
     },
+    "/api/conversations/{id}/share": {
+      "post": {
+        "description": "Calling this again keeps the same token but moves the snapshot cutoff to now, publishing anything said since the link was first created.",
+        "operationId": "ConversationsController_share",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Conversation id (cuid)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLinkDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Unknown id, or owned by another user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Create or refresh the public read-only link",
+        "tags": [
+          "conversations"
+        ]
+      },
+      "delete": {
+        "operationId": "ConversationsController_unshare",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Conversation id (cuid)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked; the old URL now 404s."
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Unknown id, or owned by another user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Revoke the public link",
+        "tags": [
+          "conversations"
+        ]
+      }
+    },
     "/api/conversations/{id}/mode": {
       "patch": {
         "operationId": "ConversationsController_setMode",
@@ -571,6 +677,48 @@
         ],
         "tags": [
           "conversations"
+        ]
+      }
+    },
+    "/api/share/{token}": {
+      "get": {
+        "description": "No authentication. Returns the transcript as it stood when the link was created — messages added afterwards are excluded.",
+        "operationId": "ShareController_findByToken",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConversationDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or revoked token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read a shared conversation",
+        "tags": [
+          "share"
         ]
       }
     }
@@ -1063,12 +1211,66 @@
             "items": {
               "$ref": "#/components/schemas/MessageDto"
             }
+          },
+          "shareToken": {
+            "type": "string",
+            "nullable": true,
+            "description": "Set when an active share link exists. Owner-only — this endpoint is already scoped to the signed-in user."
+          },
+          "sharedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Snapshot cutoff of the current share link."
           }
         },
         "required": [
           "id",
           "title",
           "mode",
+          "messages"
+        ]
+      },
+      "ShareLinkDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Opaque token. The public URL is <frontend>/share/<token>.",
+            "example": "2f6b1c30-9a4e-4c1d-8f21-6b0e3a7c5d99"
+          },
+          "sharedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Snapshot cutoff — messages sent after this are not published."
+          }
+        },
+        "required": [
+          "token",
+          "sharedAt"
+        ]
+      },
+      "SharedConversationDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "sharedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "messages": {
+            "description": "Oldest first, and only those sent at or before sharedAt.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageDto"
+            }
+          }
+        },
+        "required": [
+          "title",
+          "sharedAt",
           "messages"
         ]
       }
