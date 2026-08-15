@@ -37,16 +37,35 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MINIO_ENDPOINT: http://minio:9000
-    ports:
-      - "3001:3001"
+    # No host port: all public traffic arrives via Caddy over TLS. Exposing
+    # 3001 in parallel would let clients reach the API over plain HTTP, where
+    # Better Auth's `secure` cookies are silently dropped.
+    expose:
+      - "3001"
     depends_on:
       postgres:
         condition: service_healthy
     networks: [kurakani]
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"     # required for the ACME HTTP-01 challenge, not just redirects
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certificates — losing this re-issues and can hit rate limits
+      - caddy_config:/config
+    networks: [kurakani]
+
 volumes:
   postgres_data:
   minio_data:
+  caddy_data:
+  caddy_config:
 
 networks:
   kurakani:

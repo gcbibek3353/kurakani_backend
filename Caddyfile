@@ -1,0 +1,18 @@
+# Both hostnames get a Let's Encrypt certificate automatically on first
+# request. Caddy reaches `frontend` across the shared `kurakani` network even
+# though that container is managed by the other repo's compose project.
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:3000 {
+		# Chat responses stream token-by-token; without this a proxy may buffer
+		# them into one lump and the UI appears to hang until the reply is done.
+		flush_interval -1
+	}
+}
+
+api.{$DOMAIN} {
+	reverse_proxy backend:3001 {
+		flush_interval -1
+	}
+}
