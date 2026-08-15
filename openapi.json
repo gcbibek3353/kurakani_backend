@@ -721,6 +721,74 @@
           "share"
         ]
       }
+    },
+    "/api/payments/packs": {
+      "get": {
+        "description": "Served from the server so prices live in one place. The billing page renders whatever this returns rather than hardcoding amounts.",
+        "operationId": "PaymentsController_listPacks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CreditPackDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "The credit packs on offer",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/payments/order": {
+      "post": {
+        "operationId": "PaymentsController_createOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Create a Razorpay order for a pack",
+        "tags": [
+          "payments"
+        ]
+      }
     }
   },
   "info": {
@@ -1272,6 +1340,83 @@
           "title",
           "sharedAt",
           "messages"
+        ]
+      },
+      "CreditPackDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "starter"
+          },
+          "credits": {
+            "type": "number",
+            "description": "Credits granted once the payment is captured."
+          },
+          "amountPaise": {
+            "type": "number",
+            "description": "Price in paise — integer subunits, never a float. ₹99 is 9900.",
+            "example": 9900
+          }
+        },
+        "required": [
+          "id",
+          "credits",
+          "amountPaise"
+        ]
+      },
+      "CreditPackId": {
+        "type": "string",
+        "enum": [
+          "starter",
+          "plus",
+          "pro"
+        ],
+        "description": "Which pack to buy. The server owns the price."
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {
+          "packId": {
+            "description": "Which pack to buy. The server owns the price.",
+            "example": "starter",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreditPackId"
+              }
+            ]
+          }
+        },
+        "required": [
+          "packId"
+        ]
+      },
+      "OrderDto": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "Razorpay order id. Pass as `order_id` to checkout.",
+            "example": "order_MkT8xY2zAbCdEf"
+          },
+          "amountPaise": {
+            "type": "number",
+            "example": 9900
+          },
+          "credits": {
+            "type": "number",
+            "description": "Credits this purchase will grant, once captured."
+          },
+          "paymentId": {
+            "type": "string",
+            "description": "Local Payment row id. Useful for support; credits are granted by the webhook, never by the browser reporting success."
+          }
+        },
+        "required": [
+          "orderId",
+          "amountPaise",
+          "credits",
+          "paymentId"
         ]
       }
     }

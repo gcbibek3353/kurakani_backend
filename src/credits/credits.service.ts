@@ -101,4 +101,34 @@ export class CreditsService {
     });
     return row?.balance ?? 0;
   }
+
+  /**
+   * Add credits. Used by purchases now, and by any admin adjustment later.
+   *
+   * `upsert`, not `update`: the balance row is created by the signup hook, but
+   * a grant that throws because the row is missing would mean taking someone's
+   * money and giving them nothing. Money-in paths should never fail on a
+   * missing row they can create.
+   */
+  async grant(
+    userId: string,
+    amount: number,
+    reason: CreditReason,
+    refId?: string,
+  ): Promise<number> {
+    return this.prisma.$transaction(async (tx) => {
+      const balance = await tx.creditBalance.upsert({
+        where: { userId },
+        create: { userId, balance: amount },
+        update: { balance: { increment: amount } },
+        select: { balance: true },
+      });
+
+      await tx.creditTransaction.create({
+        data: { userId, amount, reason, refId },
+      });
+
+      return balance.balance;
+    });
+  }
 }

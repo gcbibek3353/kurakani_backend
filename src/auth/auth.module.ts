@@ -19,6 +19,12 @@ import { createAuth } from './auth.config.js';
           frontendURL:
             config.get<string>('FRONTEND_URL') ?? 'http://localhost:3001',
         }),
+
+        // Attaches the untouched request bytes as `req.rawBody` (a Buffer).
+        // Nest's own `rawBody: true` in NestFactory.create() has no effect,
+        // because this library disables Nest's body parser and installs its
+        // own — so this is the only switch that works.
+        bodyParser: { rawBody: true },
       }),
     }),
   ],

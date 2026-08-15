@@ -11,6 +11,7 @@ import { ChatModule } from './chat/chat.module.js';
 import { ConversationsModule } from './conversations/conversations.module.js';
 import { StorageModule } from './storage/storage.module.js';
 import { RagModule } from './rag/rag.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RagModule } from './rag/rag.module.js';
     MemoryModule,
     ChatModule,
     ConversationsModule,
+    PaymentsModule,
   ],
   controllers: [AppController, UserController],
   providers: [AppService],
