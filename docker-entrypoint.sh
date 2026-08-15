@@ -3,8 +3,11 @@ set -e
 
 # Applies any migration in prisma/migrations that this database has not seen.
 # Safe to run on every boot: it is a no-op once the DB is up to date.
+# Invoked directly rather than through `pnpm exec`: pnpm 11 runs a dependency
+# status check before exec and re-runs `pnpm install`, which needs write access
+# to /app that the unprivileged `node` user does not have.
 echo "Running database migrations..."
-pnpm exec prisma migrate deploy
+./node_modules/.bin/prisma migrate deploy
 
 # The RAG store (@langchain/pgvector) and mem0 both need the vector extension.
 # CREATE EXTENSION is idempotent and needs superuser, which the compose
