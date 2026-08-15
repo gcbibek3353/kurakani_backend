@@ -33,6 +33,24 @@ export class ConversationsService {
   }
 
   /**
+   * Create an empty conversation.
+   *
+   * Normal chats never come through here — they are still created lazily by
+   * the first message, so an opened-and-abandoned chat leaves no row. RAG
+   * chats have to exist first: a document is attached to a conversation, and
+   * the whole point of the mode is to load sources *before* asking anything.
+   *
+   * The title stays at its schema default until the first message names it
+   * (ChatService.titleIfUnnamed).
+   */
+  async create(userId: string, mode: ChatMode) {
+    return this.prisma.conversation.create({
+      data: { userId, mode },
+      select: { id: true, title: true, mode: true, updatedAt: true },
+    });
+  }
+
+  /**
    * Full transcript for one conversation.
    *
    * Note this returns ALL messages, unlike ChatService.loadHistory which caps

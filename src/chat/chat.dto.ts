@@ -23,6 +23,15 @@ export class ChatDto {
       'Omit to start a new conversation; the id comes back in the first SSE frame.',
   })
   conversationId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Rewind the transcript: this message and everything after it are ' +
+      'deleted before the new turn is written. Send the id of the user turn ' +
+      'being replaced — with the same text to regenerate the reply, or with ' +
+      'edited text to resend it. Requires conversationId.',
+  })
+  fromMessageId?: string;
 }
 
 export function isValidChatDto(body: unknown): body is ChatDto {
@@ -36,6 +45,12 @@ export function isValidChatDto(body: unknown): body is ChatDto {
     typeof dto.conversationId !== 'string'
   )
     return false;
+  // Rewinding is meaningless without a conversation to rewind, and letting it
+  // through would silently drop the caller's intent instead of failing.
+  if (dto.fromMessageId !== undefined) {
+    if (typeof dto.fromMessageId !== 'string') return false;
+    if (typeof dto.conversationId !== 'string') return false;
+  }
 
   return true;
 }

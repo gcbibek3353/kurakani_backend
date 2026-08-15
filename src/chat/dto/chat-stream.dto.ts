@@ -65,6 +65,28 @@ export class ChatTokenEventDto {
   value: string;
 }
 
+/**
+ * The row id of the user's turn, sent the moment it is persisted — before the
+ * model is even called.
+ *
+ * Early on purpose. Until this arrives the client is rendering an optimistic
+ * message under an id it invented, which cannot be used to rewind the
+ * transcript, so regenerate and edit-and-resend are unavailable on that turn.
+ * Sending it at the end instead would leave a stopped generation permanently
+ * un-redoable — exactly the turn a user most wants to retry.
+ */
+export class ChatSavedEventDto {
+  @ApiProperty({ enum: ['saved'] })
+  type: 'saved';
+
+  @ApiProperty({
+    description:
+      'Row id of the user turn. Pass it back as `fromMessageId` to replace ' +
+      'this turn and everything after it.',
+  })
+  value: string;
+}
+
 export class ChatDoneEventDto {
   @ApiProperty({ enum: ['done'] })
   type: 'done';
@@ -81,6 +103,7 @@ export class ChatErrorEventDto {
 export const CHAT_STREAM_EVENTS = [
   ChatConversationEventDto,
   ChatCreditsEventDto,
+  ChatSavedEventDto,
   ChatSourcesEventDto,
   ChatTokenEventDto,
   ChatDoneEventDto,

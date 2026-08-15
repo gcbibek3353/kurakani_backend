@@ -11,7 +11,10 @@ import {
   Post,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
+  ApiBody,
   ApiCookieAuth,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -28,14 +31,17 @@ import { ConversationsService } from './conversations.service.js';
 import {
   ConversationDetailDto,
   ConversationSummaryDto,
+  CreateConversationDto,
   ShareLinkDto,
 } from './dto/conversation.dto.js';
 import { ChatMode } from '../generated/prisma/enums.js';
 
 /**
- * No POST here on purpose. A conversation is created lazily by the first
- * message (see ChatController), so "New chat" in the UI is pure client state —
- * no request, and no rows for chats the user opened and abandoned.
+ * POST is the exception, not the rule. A NORMAL conversation is still created
+ * lazily by its first message (see ChatController), so "New chat" in the UI
+ * costs no request and leaves no row behind if the user walks away. RAG is the
+ * case that cannot work that way — sources attach to a conversation id, and
+ * they are chosen before the first question is asked.
  */
 @ApiTags('conversations')
 @ApiCookieAuth()
@@ -49,6 +55,27 @@ export class ConversationsController {
   @ApiOkResponse({ type: [ConversationSummaryDto] })
   async list(@Session() session: UserSession) {
     return this.conversations.list(session.user.id);
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: 'Create an empty conversation',
+    description:
+      'Only needed to start a RAG chat, where sources must be attached before ' +
+      'the first message. A normal chat is created by POST /api/chat itself.',
+  })
+  @ApiBody({ type: CreateConversationDto })
+  @ApiCreatedResponse({ type: ConversationSummaryDto })
+  @ApiBadRequestResponse({ type: ErrorResponseDto })
+  async create(
+    @Session() session: UserSession,
+    @Body() body: CreateConversationDto,
+  ) {
+    const mode = body?.mode ?? ChatMode.NORMAL;
+    if (mode !== ChatMode.NORMAL && mode !== ChatMode.RAG) {
+      throw new BadRequestException('mode must be NORMAL or RAG');
+    }
+    return this.conversations.create(session.user.id, mode);
   }
 
   @Get(':id')

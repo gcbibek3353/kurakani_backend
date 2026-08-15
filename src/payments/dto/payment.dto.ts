@@ -27,7 +27,8 @@ export class CreditPackDto {
   credits: number;
 
   @ApiProperty({
-    description: 'Price in paise — integer subunits, never a float. ₹99 is 9900.',
+    description:
+      'Price in paise — integer subunits, never a float. ₹99 is 9900.',
     example: 9900,
   })
   amountPaise: number;
@@ -49,7 +50,9 @@ export class OrderDto {
   @ApiProperty({ example: 9900 })
   amountPaise: number;
 
-  @ApiProperty({ description: 'Credits this purchase will grant, once captured.' })
+  @ApiProperty({
+    description: 'Credits this purchase will grant, once captured.',
+  })
   credits: number;
 
   @ApiProperty({

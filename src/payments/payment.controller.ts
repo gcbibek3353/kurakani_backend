@@ -18,6 +18,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { AllowAnonymous, Session } from '@thallesp/nestjs-better-auth';
 // `import type` is required: with isolatedModules + emitDecoratorMetadata, a
 // value import used only as a decorated parameter's type is a compile error.
@@ -25,11 +26,7 @@ import type { UserSession } from '@thallesp/nestjs-better-auth';
 import type { Request } from 'express';
 
 import { CREDIT_PACKS, isCreditPackId } from './credit-packs.js';
-import {
-  CreateOrderDto,
-  CreditPackDto,
-  OrderDto,
-} from './dto/payment.dto.js';
+import { CreateOrderDto, CreditPackDto, OrderDto } from './dto/payment.dto.js';
 import { PaymentsService } from './payments.service.js';
 import type { RazorpayWebhookBody } from './razorpay-webhook.types.js';
 
@@ -69,6 +66,10 @@ export class PaymentsController {
   }
 
   @Post('webhook')
+  // Never rate-limited. Razorpay retries a rejected delivery, but every
+  // retry is another chance to lose it — and a 429 here means a customer
+  // paid and got no credits.
+  @SkipThrottle()
   // Excluded from the docs: it is called by Razorpay, never by the frontend,
   // so publishing it into the generated client would only add a route nobody
   // should call from a browser.

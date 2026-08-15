@@ -316,6 +316,9 @@
                       "$ref": "#/components/schemas/ChatCreditsEventDto"
                     },
                     {
+                      "$ref": "#/components/schemas/ChatSavedEventDto"
+                    },
+                    {
                       "$ref": "#/components/schemas/ChatSourcesEventDto"
                     },
                     {
@@ -419,6 +422,62 @@
           }
         ],
         "summary": "List the signed-in user’s conversations",
+        "tags": [
+          "conversations"
+        ]
+      },
+      "post": {
+        "description": "Only needed to start a RAG chat, where sources must be attached before the first message. A normal chat is created by POST /api/chat itself.",
+        "operationId": "ConversationsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConversationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSummaryDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
+        "summary": "Create an empty conversation",
         "tags": [
           "conversations"
         ]
@@ -1049,6 +1108,25 @@
           "value"
         ]
       },
+      "ChatSavedEventDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "saved"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "description": "Row id of the user turn. Pass it back as `fromMessageId` to replace this turn and everything after it."
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ]
+      },
       "SourceChunkDto": {
         "type": "object",
         "properties": {
@@ -1161,6 +1239,10 @@
           "conversationId": {
             "type": "string",
             "description": "Omit to start a new conversation; the id comes back in the first SSE frame."
+          },
+          "fromMessageId": {
+            "type": "string",
+            "description": "Rewind the transcript: this message and everything after it are deleted before the new turn is written. Send the id of the user turn being replaced — with the same text to regenerate the reply, or with edited text to resend it. Requires conversationId."
           }
         },
         "required": [
@@ -1220,6 +1302,20 @@
           "mode",
           "updatedAt"
         ]
+      },
+      "CreateConversationDto": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "default": "NORMAL",
+            "description": "RAG to start a chat that answers only from attached sources. Sources are attached after this call, with the id it returns.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChatMode"
+              }
+            ]
+          }
+        }
       },
       "MessageRole": {
         "type": "string",

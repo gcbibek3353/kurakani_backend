@@ -27,6 +27,23 @@ export class ConversationSummaryDto {
   updatedAt: Date;
 }
 
+/**
+ * POST /api/conversations. One optional field, because everything else about a
+ * new conversation is either defaulted by the schema or written by the first
+ * message.
+ */
+export class CreateConversationDto {
+  @ApiPropertyOptional({
+    enum: ChatMode,
+    enumName: 'ChatMode',
+    default: ChatMode.NORMAL,
+    description:
+      'RAG to start a chat that answers only from attached sources. Sources ' +
+      'are attached after this call, with the id it returns.',
+  })
+  mode?: ChatMode;
+}
+
 export class MessageDto {
   @ApiProperty()
   id: string;
@@ -86,7 +103,8 @@ export class ShareLinkDto {
   @ApiProperty({
     type: String,
     format: 'date-time',
-    description: 'Snapshot cutoff — messages sent after this are not published.',
+    description:
+      'Snapshot cutoff — messages sent after this are not published.',
   })
   sharedAt: Date;
 }

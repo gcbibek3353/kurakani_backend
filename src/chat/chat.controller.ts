@@ -21,6 +21,7 @@ import {
   ApiUnauthorizedResponse,
   getSchemaPath,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { MemoryService } from '../memory/memory.service.js';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
@@ -51,6 +52,13 @@ export class ChatController {
   ) {}
 
   @Post('chat')
+  // Far below the global default. Credits already cap how much a user can
+  // spend overall; this caps how fast, which is what protects the Groq key
+  // and the connection pool from a stuck retry loop.
+  @Throttle({
+    burst: { limit: 1, ttl: 2_000 },
+    sustained: { limit: 20, ttl: 60_000 },
+  })
   @ApiOperation({
     summary: 'Send a message and stream the reply',
     description: [
@@ -130,7 +138,23 @@ export class ChatController {
       existing ??
       (await this.chatService.createConversation(userId, userMessage));
 
-    // Lets the badge update without a second round trip to /api/me.
+    // Regenerate and edit-and-resend both land here: drop the turn being
+    // replaced, and everything after it, before the replacement is written.
+    // Done after the credit charge because a redo costs a credit like any
+    // other message — and before the history load, which must not see the
+    // rows that are going away.
+    if (body.fromMessageId) {
+      await this.chatService.truncateFrom(conversation.id, body.fromMessageId);
+    }
+
+    // A RAG chat is created empty and still carries the default title at this
+    // point; a normal one was just named from this very message. Either way
+    // the frame below carries the real title, so the sidebar never shows a
+    // placeholder it has to replace a second later.
+    const title = await this.chatService.titleIfUnnamed(
+      conversation,
+      userMessage,
+    );
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -146,11 +170,7 @@ export class ChatController {
     // chat this is how the browser learns the id to send with turn 2.
     send({
       type: 'conversation',
-      value: {
-        id: conversation.id,
-        title: conversation.title,
-        mode: conversation.mode,
-      },
+      value: { id: conversation.id, title, mode: conversation.mode },
     });
 
     let clientGone = false;
@@ -169,7 +189,7 @@ export class ChatController {
       // The save runs BEFORE the model is called. If Groq is down, the user's
       // message is still in the transcript — losing the user's own words to a
       // provider outage is the worst possible failure here.
-      const [, facts, context] = await Promise.all([
+      const [savedUser, facts, context] = await Promise.all([
         this.chatService.saveMessage(
           conversation.id,
           MessageRole.USER,
@@ -182,6 +202,10 @@ export class ChatController {
           ? this.retrieveSafely(conversation.id, userId, userMessage)
           : Promise.resolve<RetrievedChunk[]>([]),
       ]);
+
+      // Before the first token, so a user who stops the generation a second
+      // later can still hit regenerate on this turn.
+      send({ type: 'saved', value: savedUser.id });
 
       if (context.length > 0) {
         // Before the first token, so the UI can render citations while the
@@ -208,8 +232,6 @@ export class ChatController {
         assistantReply += token;
         send({ type: 'token', value: token });
       }
-
-      if (!clientGone) send({ type: 'done' });
     } catch (error) {
       this.chatService.logStreamFailure(error);
 
@@ -245,7 +267,16 @@ export class ChatController {
 
       await this.chatService.bumpConversation(conversation.id);
 
-      if (!clientGone) res.end();
+      // Sent from the finally rather than the try, so it follows an `error`
+      // frame too — the client then has exactly one signal for "this turn is
+      // over", however it ended. Skipped when the client has already gone;
+      // there is nobody to read it.
+      if (!clientGone) send({ type: 'done' });
+
+      // Unconditional. On an aborted request the socket is already torn down
+      // and this is a no-op, but leaving the response un-ended on any path is
+      // how you end up holding connections open.
+      res.end();
     }
   }
 

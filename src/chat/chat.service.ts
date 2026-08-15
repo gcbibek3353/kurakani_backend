@@ -25,6 +25,20 @@ import type { RetrievedChunk } from '../rag/vector-store.service.js';
  */
 const HISTORY_WINDOW = 10;
 
+/**
+ * Must match `@default` on Conversation.title in schema.prisma. It is the
+ * marker for "nobody has spoken here yet", which is what titleIfUnnamed reads.
+ */
+const DEFAULT_TITLE = 'New chat';
+
+const TITLE_MAX = 60;
+
+/** Collapses the newlines a pasted question carries — a sidebar row is one line. */
+function titleFrom(message: string): string {
+  const flat = message.replace(/\s+/g, ' ').trim();
+  return flat.length > TITLE_MAX ? `${flat.slice(0, TITLE_MAX - 1)}…` : flat;
+}
+
 const SYSTEM_PROMPT = [
   'You are Kurakani, a helpful assistant.',
   'Answer clearly and concisely. Use markdown when it aids readability.',
@@ -85,7 +99,58 @@ export class ChatService {
    */
   async createConversation(userId: string, firstMessage: string) {
     return this.prisma.conversation.create({
-      data: { userId, title: firstMessage.slice(0, 60) },
+      data: { userId, title: titleFrom(firstMessage) },
+    });
+  }
+
+  /**
+   * Names a conversation that was created before anyone spoke.
+   *
+   * RAG chats exist ahead of the first message — sources have to attach to
+   * something — so they reach this point still carrying the schema default.
+   * Backfilling here keeps every conversation titled by its opening question,
+   * however the row came to exist. A conversation the user already named, or
+   * one titled by a previous turn, is left alone.
+   */
+  async titleIfUnnamed(
+    conversation: { id: string; title: string },
+    firstMessage: string,
+  ): Promise<string> {
+    if (conversation.title !== DEFAULT_TITLE) return conversation.title;
+
+    const title = titleFrom(firstMessage);
+    await this.prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { title },
+    });
+    return title;
+  }
+
+  /**
+   * Rewind the transcript to just before one message, for regenerate and
+   * edit-and-resend.
+   *
+   * Deleting rather than versioning is the honest model here: the history
+   * window this service replays to the model IS the transcript, so a
+   * "superseded" message left in the table would keep steering replies while
+   * being invisible on screen.
+   *
+   * Scoped by conversationId as well as id, so a message id from another
+   * chat — the user's own or anyone else's — matches nothing and truncates
+   * nothing.
+   */
+  async truncateFrom(conversationId: string, messageId: string): Promise<void> {
+    const anchor = await this.prisma.message.findFirst({
+      where: { id: messageId, conversationId },
+      select: { createdAt: true },
+    });
+
+    // Already gone, or never here. Nothing to rewind to, and the new turn is
+    // still perfectly valid — it just appends.
+    if (!anchor) return;
+
+    await this.prisma.message.deleteMany({
+      where: { conversationId, createdAt: { gte: anchor.createdAt } },
     });
   }
 

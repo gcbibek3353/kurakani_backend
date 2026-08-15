@@ -22,6 +22,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 
@@ -30,6 +31,16 @@ import { IngestionService } from './ingestion.service.js';
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
+/**
+ * Ingestion spends real money and real time — an embedding call per chunk —
+ * and unlike chat it costs no credits, so a rate limit is the only thing
+ * standing between one user and the Gemini quota.
+ */
+const INGEST_LIMIT = {
+  burst: { limit: 2, ttl: 5_000 },
+  sustained: { limit: 20, ttl: 60_000 },
+};
+
 @ApiTags('rag')
 @ApiCookieAuth()
 @Controller('api/rag')
@@ -37,6 +48,7 @@ export class RagController {
   constructor(private readonly ingestion: IngestionService) {}
 
   @Post('upload')
+  @Throttle(INGEST_LIMIT)
   @ApiOperation({
     summary: 'Upload a PDF for retrieval',
     description:
@@ -76,6 +88,7 @@ export class RagController {
   }
 
   @Post('url')
+  @Throttle(INGEST_LIMIT)
   @ApiOperation({ summary: 'Ingest a YouTube or web URL' })
   @ApiCreatedResponse({ type: DocumentDto })
   async url(
