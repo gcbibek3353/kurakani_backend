@@ -39,9 +39,10 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: |
-            docker-compose.yml
-            Caddyfile
+          # Comma-separated, on one line: drone-scp does not split a multi-line
+          # block, it treats the whole string as a single filename and tars an
+          # empty archive.
+          source: "docker-compose.yml,Caddyfile"
           target: ~/kurakani-backend
 
       - uses: appleboy/ssh-action@v1
