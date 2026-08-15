@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+.git
+.env
+.env.*
+*.log
+test
+instructions
+src/generated
+bun.lock

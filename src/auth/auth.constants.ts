@@ -44,4 +44,4 @@ export const SESSION_COOKIE_CACHE_SECONDS = 60 * 5; // 5 minutes
  * inside Better Auth's `databaseHooks.user.create` hook — the credits module
  * will import this same constant when it implements the debit side.
  */
-export const SIGNUP_FREE_CREDITS = 100;
+export const SIGNUP_FREE_CREDITS = 5;
